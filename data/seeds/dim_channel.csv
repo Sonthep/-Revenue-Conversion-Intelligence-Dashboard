@@ -1,0 +1,5 @@
+channel_id,channel_name,source,medium,campaign,channel_group
+1,Organic Search,google,organic,,Organic
+2,Paid Search,google,cpc,brand_search,Paid Search
+3,Direct,direct,direct,,Direct
+4,Email,mailchimp,email,weekly_newsletter,Email
