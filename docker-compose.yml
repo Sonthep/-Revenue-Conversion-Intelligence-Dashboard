@@ -11,8 +11,13 @@ services:
     ports:
       - "8081:8080"
     environment:
-      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__CORE__EXECUTOR=SequentialExecutor
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - _AIRFLOW_WWW_USER_USERNAME=admin
+      - _AIRFLOW_WWW_USER_PASSWORD=admin
+      - _AIRFLOW_WWW_USER_FIRSTNAME=Admin
+      - _AIRFLOW_WWW_USER_LASTNAME=User
+      - _AIRFLOW_WWW_USER_EMAIL=admin@example.com
     volumes:
       - ./orchestration/dags:/opt/airflow/dags
-    command: ["bash", "-c", "airflow db init && airflow webserver"]
+    command: ["bash", "-c", "airflow db migrate && airflow users create --username $$_AIRFLOW_WWW_USER_USERNAME --password $$_AIRFLOW_WWW_USER_PASSWORD --firstname $$_AIRFLOW_WWW_USER_FIRSTNAME --lastname $$_AIRFLOW_WWW_USER_LASTNAME --role Admin --email $$_AIRFLOW_WWW_USER_EMAIL || true && airflow webserver"]
