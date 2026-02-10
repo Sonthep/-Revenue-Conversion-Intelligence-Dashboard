@@ -23,6 +23,9 @@ go mod tidy
 go run ./
 ```
 
+The API uses a local SQLite dev warehouse by default. You can override it with:
+- `WAREHOUSE_DSN` in [api/.env.example](api/.env.example)
+
 ### 3) Frontend (Next.js)
 ```bash
 cd /home/sonthep/dev/frontend
@@ -48,3 +51,4 @@ dbt run
 ## Notes
 - Update .env.example files and create .env as needed.
 - Airflow service is a placeholder; configure as needed for your environment.
+- Local SQLite database file is created at api/dev.db on first run.

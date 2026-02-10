@@ -21,8 +21,7 @@ type MetricResponse struct {
 
 func GetRevenue(cache *redis.Client, warehouse *db.WarehouseClient) fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		startDate := c.Query("start_date")
-		endDate := c.Query("end_date")
+		startDate, endDate := resolveDateRange(c.Query("start_date"), c.Query("end_date"))
 		accountID := c.Query("account_id")
 
 		cacheKey := "revenue:" + startDate + ":" + endDate + ":" + accountID
@@ -51,8 +50,7 @@ func GetRevenue(cache *redis.Client, warehouse *db.WarehouseClient) fiber.Handle
 
 func GetConversionRate(cache *redis.Client, warehouse *db.WarehouseClient) fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		startDate := c.Query("start_date")
-		endDate := c.Query("end_date")
+		startDate, endDate := resolveDateRange(c.Query("start_date"), c.Query("end_date"))
 		accountID := c.Query("account_id")
 
 		cacheKey := "conversion_rate:" + startDate + ":" + endDate + ":" + accountID
@@ -95,4 +93,14 @@ func getCache(ctx context.Context, client *redis.Client, key string) (string, bo
 
 func setCache(ctx context.Context, client *redis.Client, key string, value string, ttl time.Duration) {
 	_ = client.Set(ctx, key, value, ttl).Err()
+}
+
+func resolveDateRange(startDate, endDate string) (string, string) {
+	if startDate == "" || endDate == "" {
+		now := time.Now().UTC()
+		endDate = now.Format("2006-01-02")
+		startDate = now.AddDate(0, 0, -30).Format("2006-01-02")
+		return startDate, endDate
+	}
+	return startDate, endDate
 }

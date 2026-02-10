@@ -24,6 +24,9 @@ func main() {
 
 	redisClient := cache.NewRedisClient()
 	warehouse := db.NewWarehouseClient()
+	defer func() {
+		_ = warehouse.Close()
+	}()
 
 	api := app.Group("/api")
 	api.Use(middleware.AuthMiddleware())
