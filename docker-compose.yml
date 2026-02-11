@@ -20,4 +20,5 @@ services:
       - _AIRFLOW_WWW_USER_EMAIL=admin@example.com
     volumes:
       - ./orchestration/dags:/opt/airflow/dags
+      - ./api:/opt/airflow/api
     command: ["bash", "-c", "airflow db migrate && airflow users create --username $$_AIRFLOW_WWW_USER_USERNAME --password $$_AIRFLOW_WWW_USER_PASSWORD --firstname $$_AIRFLOW_WWW_USER_FIRSTNAME --lastname $$_AIRFLOW_WWW_USER_LASTNAME --role Admin --email $$_AIRFLOW_WWW_USER_EMAIL || true && airflow webserver"]

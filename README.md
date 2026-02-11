@@ -64,3 +64,4 @@ dbt run
 - Update .env.example files and create .env as needed.
 - Airflow service is a placeholder; configure as needed for your environment.
 - Local SQLite database file is created at api/dev.db on first run.
+- Data quality DAG reads SQLite from /opt/airflow/api/dev.db (mounted from ./api).
