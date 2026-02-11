@@ -221,6 +221,35 @@ func GetLTV(cache *redis.Client, warehouse *db.WarehouseClient) fiber.Handler {
 	}
 }
 
+func GetCAC(cache *redis.Client, warehouse *db.WarehouseClient) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		startDate, endDate := resolveDateRange(c.Query("start_date"), c.Query("end_date"))
+		accountID := c.Query("account_id")
+
+		cacheKey := "cac:" + startDate + ":" + endDate + ":" + accountID
+		if cached, ok := getCache(c.Context(), cache, cacheKey); ok {
+			return c.Status(http.StatusOK).JSON(MetricResponse{
+				Metric:     "cac",
+				Value:      cached,
+				UpdatedAt:  time.Now().UTC().Format(time.RFC3339),
+				Cached:     true,
+				TimeWindow: startDate + " to " + endDate,
+			})
+		}
+
+		value := warehouse.GetCAC(context.Background(), startDate, endDate, accountID)
+		setCache(c.Context(), cache, cacheKey, value, 30*time.Minute)
+
+		return c.Status(http.StatusOK).JSON(MetricResponse{
+			Metric:     "cac",
+			Value:      value,
+			UpdatedAt:  time.Now().UTC().Format(time.RFC3339),
+			Cached:     false,
+			TimeWindow: startDate + " to " + endDate,
+		})
+	}
+}
+
 func Health() fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		return c.Status(http.StatusOK).JSON(fiber.Map{"status": "ok"})

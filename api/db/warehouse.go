@@ -82,6 +82,12 @@ func (w *WarehouseClient) Migrate(ctx context.Context) error {
 			active_customers integer not null,
 			primary key (snapshot_date, account_id)
 		);`,
+		`create table if not exists fact_marketing_spend (
+			spend_date date not null,
+			account_id text not null,
+			amount numeric not null,
+			primary key (spend_date, account_id)
+		);`,
 	}
 
 	for _, q := range queries {
@@ -108,6 +114,7 @@ func (w *WarehouseClient) Seed(ctx context.Context) error {
 	insertSubscription := `insert into fact_subscriptions (subscription_id, account_id, mrr, is_active) values (?, ?, ?, ?);`
 	insertMRRSnapshot := `insert into fact_mrr_snapshots (snapshot_date, account_id, mrr) values (?, ?, ?);`
 	insertCustomerSnapshot := `insert into fact_customer_snapshots (snapshot_date, account_id, active_customers) values (?, ?, ?);`
+	insertMarketingSpend := `insert into fact_marketing_spend (spend_date, account_id, amount) values (?, ?, ?);`
 
 	now := time.Now().UTC()
 	for i := 0; i < 30; i++ {
@@ -136,6 +143,11 @@ func (w *WarehouseClient) Seed(ctx context.Context) error {
 			if _, err := w.db.ExecContext(ctx, insertActiveUser, userID, date, accountID); err != nil {
 				return err
 			}
+		}
+
+		spend := float64(300 + i*5)
+		if _, err := w.db.ExecContext(ctx, insertMarketingSpend, date, accountID, spend); err != nil {
+			return err
 		}
 	}
 
@@ -360,4 +372,36 @@ func (w *WarehouseClient) GetLTV(ctx context.Context, startDate, endDate, accoun
 
 	ltv := arpu / churnRate
 	return strconv.FormatFloat(ltv, 'f', 2, 64)
+}
+
+func (w *WarehouseClient) GetCAC(ctx context.Context, startDate, endDate, accountID string) string {
+	spendQuery := "select coalesce(sum(amount), 0) from fact_marketing_spend where spend_date between ? and ?"
+	args := []interface{}{startDate, endDate}
+	if accountID != "" {
+		spendQuery += " and account_id = ?"
+		args = append(args, accountID)
+	}
+
+	var spend float64
+	if err := w.db.QueryRowContext(ctx, spendQuery, args...).Scan(&spend); err != nil {
+		return "0"
+	}
+
+	newCustomersQuery := "select count(distinct account_id) from fact_orders where order_date between ? and ?"
+	newArgs := []interface{}{startDate, endDate}
+	if accountID != "" {
+		newCustomersQuery += " and account_id = ?"
+		newArgs = append(newArgs, accountID)
+	}
+
+	var newCustomers int
+	if err := w.db.QueryRowContext(ctx, newCustomersQuery, newArgs...).Scan(&newCustomers); err != nil {
+		return "0"
+	}
+	if newCustomers == 0 {
+		return "0"
+	}
+
+	cac := spend / float64(newCustomers)
+	return strconv.FormatFloat(cac, 'f', 2, 64)
 }

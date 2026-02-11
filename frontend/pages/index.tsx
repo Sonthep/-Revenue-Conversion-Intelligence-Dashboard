@@ -11,6 +11,7 @@ export default function Home() {
   const [nrr, setNrr] = useState<string>('0%');
   const [churn, setChurn] = useState<string>('0%');
   const [ltv, setLtv] = useState<string>('0');
+  const [cac, setCac] = useState<string>('0');
 
   useEffect(() => {
     const load = async () => {
@@ -21,6 +22,7 @@ export default function Home() {
       const nrrMetric = await fetchMetric('nrr');
       const churnMetric = await fetchMetric('churn-rate');
       const ltvMetric = await fetchMetric('ltv');
+      const cacMetric = await fetchMetric('cac');
 
       setRevenue(revenueMetric.value ?? '0');
       setConversion(conversionMetric.value ?? '0%');
@@ -29,6 +31,7 @@ export default function Home() {
       setNrr(nrrMetric.value ?? '0%');
       setChurn(churnMetric.value ?? '0%');
       setLtv(ltvMetric.value ?? '0');
+      setCac(cacMetric.value ?? '0');
     };
 
     load().catch(() => {
@@ -39,6 +42,7 @@ export default function Home() {
       setNrr('0%');
       setChurn('0%');
       setLtv('0');
+      setCac('0');
     });
   }, []);
 
@@ -52,6 +56,7 @@ export default function Home() {
         <KPICard title="NRR" value={nrr} subtitle="Last 30 days" />
         <KPICard title="Churn Rate" value={churn} subtitle="Last 30 days" />
         <KPICard title="LTV" value={ltv} subtitle="Derived" />
+        <KPICard title="CAC" value={cac} subtitle="Last 30 days" />
       </div>
     </DashboardLayout>
   );

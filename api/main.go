@@ -38,6 +38,7 @@ func main() {
 	api.Get("/metrics/nrr", handlers.GetNRR(redisClient, warehouse))
 	api.Get("/metrics/churn-rate", handlers.GetChurnRate(redisClient, warehouse))
 	api.Get("/metrics/ltv", handlers.GetLTV(redisClient, warehouse))
+	api.Get("/metrics/cac", handlers.GetCAC(redisClient, warehouse))
 	api.Get("/health", handlers.Health())
 
 	log.Fatal(app.Listen(":8080"))
