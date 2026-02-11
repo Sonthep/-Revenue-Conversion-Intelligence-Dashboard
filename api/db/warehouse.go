@@ -314,3 +314,50 @@ func (w *WarehouseClient) GetChurnRate(ctx context.Context, startDate, endDate, 
 	churn := (float64(lost) / float64(startCustomers)) * 100
 	return fmt.Sprintf("%.2f%%", churn)
 }
+
+func (w *WarehouseClient) GetLTV(ctx context.Context, startDate, endDate, accountID string) string {
+	arpuValue := w.GetARPU(ctx, startDate, endDate, accountID)
+	arpu, err := strconv.ParseFloat(arpuValue, 64)
+	if err != nil {
+		return "0"
+	}
+
+	query := "select active_customers from fact_customer_snapshots where snapshot_date = ?"
+	args := []interface{}{startDate}
+	if accountID != "" {
+		query += " and account_id = ?"
+		args = append(args, accountID)
+	}
+
+	var startCustomers int
+	if err := w.db.QueryRowContext(ctx, query, args...).Scan(&startCustomers); err != nil {
+		return "0"
+	}
+
+	endQuery := "select active_customers from fact_customer_snapshots where snapshot_date = ?"
+	endArgs := []interface{}{endDate}
+	if accountID != "" {
+		endQuery += " and account_id = ?"
+		endArgs = append(endArgs, accountID)
+	}
+
+	var endCustomers int
+	if err := w.db.QueryRowContext(ctx, endQuery, endArgs...).Scan(&endCustomers); err != nil {
+		return "0"
+	}
+	if startCustomers == 0 {
+		return "0"
+	}
+
+	lost := startCustomers - endCustomers
+	if lost < 0 {
+		lost = 0
+	}
+	churnRate := float64(lost) / float64(startCustomers)
+	if churnRate <= 0 {
+		return "0"
+	}
+
+	ltv := arpu / churnRate
+	return strconv.FormatFloat(ltv, 'f', 2, 64)
+}

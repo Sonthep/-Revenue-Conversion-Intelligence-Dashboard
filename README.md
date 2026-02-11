@@ -37,6 +37,7 @@ Sample metric endpoints:
 - `/api/metrics/mrr`
 - `/api/metrics/nrr`
 - `/api/metrics/churn-rate`
+- `/api/metrics/ltv`
 
 ### 3) Frontend (Next.js)
 ```bash
