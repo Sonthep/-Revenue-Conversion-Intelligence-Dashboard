@@ -26,6 +26,11 @@ go run ./
 The API uses a local SQLite dev warehouse by default. You can override it with:
 - `WAREHOUSE_DSN` in [api/.env.example](api/.env.example)
 
+BigQuery (optional):
+- Set `WAREHOUSE_DRIVER=bigquery`
+- Set `WAREHOUSE_PROJECT` and `WAREHOUSE_DATASET`
+- Optionally set `WAREHOUSE_CREDENTIALS` to a service account JSON
+
 Optional auth:
 - Set `API_KEY` in [api/.env.example](api/.env.example)
 - Send `X-API-Key: <key>` or `Authorization: Bearer <key>` to access `/api/*`

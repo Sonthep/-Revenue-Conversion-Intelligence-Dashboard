@@ -3,19 +3,63 @@ package db
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
+
+	"cloud.google.com/go/bigquery"
+	"google.golang.org/api/option"
 
 	_ "modernc.org/sqlite"
 )
 
 type WarehouseClient struct {
-	db *sql.DB
+	mode    string
+	db      *sql.DB
+	bq      *bigquery.Client
+	project string
+	dataset string
 }
 
 func NewWarehouseClient() *WarehouseClient {
+	mode := os.Getenv("WAREHOUSE_DRIVER")
+	if mode == "" {
+		mode = "sqlite"
+	}
+
+	client := &WarehouseClient{mode: mode}
+	if mode == "bigquery" {
+		project := os.Getenv("WAREHOUSE_PROJECT")
+		if project == "" {
+			panic(errors.New("WAREHOUSE_PROJECT is required for bigquery"))
+		}
+		dataset := os.Getenv("WAREHOUSE_DATASET")
+		if dataset == "" {
+			panic(errors.New("WAREHOUSE_DATASET is required for bigquery"))
+		}
+
+		ctx := context.Background()
+		creds := os.Getenv("WAREHOUSE_CREDENTIALS")
+		var bqClient *bigquery.Client
+		var err error
+		if creds != "" {
+			bqClient, err = bigquery.NewClient(ctx, project, option.WithCredentialsFile(creds))
+		} else {
+			bqClient, err = bigquery.NewClient(ctx, project)
+		}
+		if err != nil {
+			panic(err)
+		}
+
+		client.bq = bqClient
+		client.project = project
+		client.dataset = dataset
+		return client
+	}
+
 	dsn := os.Getenv("WAREHOUSE_DSN")
 	if dsn == "" {
 		dsn = "file:./dev.db?cache=shared&_pragma=busy_timeout=5000&_pragma=journal_mode=WAL"
@@ -26,7 +70,7 @@ func NewWarehouseClient() *WarehouseClient {
 		panic(err)
 	}
 
-	client := &WarehouseClient{db: dbConn}
+	client.db = dbConn
 	if err := client.Migrate(context.Background()); err != nil {
 		panic(err)
 	}
@@ -38,6 +82,12 @@ func NewWarehouseClient() *WarehouseClient {
 }
 
 func (w *WarehouseClient) Close() error {
+	if w.mode == "bigquery" {
+		if w.bq == nil {
+			return nil
+		}
+		return w.bq.Close()
+	}
 	if w.db == nil {
 		return nil
 	}
@@ -179,6 +229,28 @@ func (w *WarehouseClient) Seed(ctx context.Context) error {
 }
 
 func (w *WarehouseClient) GetRevenue(ctx context.Context, startDate, endDate, accountID string) string {
+	if w.mode == "bigquery" {
+		query := w.bqQuery(`
+			select coalesce(sum(net_amount), 0) as value
+			from {{dataset}}.fact_orders
+			where order_date between @start_date and @end_date
+			{{account_filter}}
+		`)
+		params := []bigquery.QueryParameter{
+			{Name: "start_date", Value: startDate},
+			{Name: "end_date", Value: endDate},
+		}
+		if accountID != "" {
+			query = w.withAccountFilter(query)
+			params = append(params, bigquery.QueryParameter{Name: "account_id", Value: accountID})
+		}
+		value, err := w.runBigQueryFloat(ctx, query, params)
+		if err != nil {
+			return "0"
+		}
+		return strconv.FormatFloat(value, 'f', 2, 64)
+	}
+
 	query := "select coalesce(sum(net_amount), 0) from fact_orders where order_date between ? and ?"
 	args := []interface{}{startDate, endDate}
 	if accountID != "" {
@@ -195,6 +267,29 @@ func (w *WarehouseClient) GetRevenue(ctx context.Context, startDate, endDate, ac
 }
 
 func (w *WarehouseClient) GetConversionRate(ctx context.Context, startDate, endDate, accountID string) string {
+	if w.mode == "bigquery" {
+		query := w.bqQuery(`
+			select count(*) as sessions, sum(had_conversion) as conversions
+			from {{dataset}}.fact_sessions
+			where session_date between @start_date and @end_date
+			{{account_filter}}
+		`)
+		params := []bigquery.QueryParameter{
+			{Name: "start_date", Value: startDate},
+			{Name: "end_date", Value: endDate},
+		}
+		if accountID != "" {
+			query = w.withAccountFilter(query)
+			params = append(params, bigquery.QueryParameter{Name: "account_id", Value: accountID})
+		}
+		sessions, conversions, err := w.runBigQueryCounts(ctx, query, params)
+		if err != nil || sessions == 0 {
+			return "0%"
+		}
+		rate := (float64(conversions) / float64(sessions)) * 100
+		return fmt.Sprintf("%.2f%%", rate)
+	}
+
 	query := "select count(*) as sessions, sum(had_conversion) as conversions from fact_sessions where session_date between ? and ?"
 	args := []interface{}{startDate, endDate}
 	if accountID != "" {
@@ -215,6 +310,40 @@ func (w *WarehouseClient) GetConversionRate(ctx context.Context, startDate, endD
 }
 
 func (w *WarehouseClient) GetARPU(ctx context.Context, startDate, endDate, accountID string) string {
+	if w.mode == "bigquery" {
+		revenueQuery := w.bqQuery(`
+			select coalesce(sum(net_amount), 0) as revenue
+			from {{dataset}}.fact_orders
+			where order_date between @start_date and @end_date
+			{{account_filter}}
+		`)
+		usersQuery := w.bqQuery(`
+			select count(distinct user_id) as users
+			from {{dataset}}.fact_active_users
+			where activity_date between @start_date and @end_date
+			{{account_filter}}
+		`)
+		params := []bigquery.QueryParameter{
+			{Name: "start_date", Value: startDate},
+			{Name: "end_date", Value: endDate},
+		}
+		if accountID != "" {
+			revenueQuery = w.withAccountFilter(revenueQuery)
+			usersQuery = w.withAccountFilter(usersQuery)
+			params = append(params, bigquery.QueryParameter{Name: "account_id", Value: accountID})
+		}
+		revenue, err := w.runBigQueryFloat(ctx, revenueQuery, params)
+		if err != nil {
+			return "0"
+		}
+		users, err := w.runBigQueryInt(ctx, usersQuery, params)
+		if err != nil || users == 0 {
+			return "0"
+		}
+		arpu := revenue / float64(users)
+		return strconv.FormatFloat(arpu, 'f', 2, 64)
+	}
+
 	revenueQuery := "select coalesce(sum(net_amount), 0) from fact_orders where order_date between ? and ?"
 	usersQuery := "select count(distinct user_id) from fact_active_users where activity_date between ? and ?"
 	args := []interface{}{startDate, endDate}
@@ -244,6 +373,25 @@ func (w *WarehouseClient) GetARPU(ctx context.Context, startDate, endDate, accou
 }
 
 func (w *WarehouseClient) GetMRR(ctx context.Context, accountID string) string {
+	if w.mode == "bigquery" {
+		query := w.bqQuery(`
+			select coalesce(sum(mrr), 0) as value
+			from {{dataset}}.fact_subscriptions
+			where is_active = 1
+			{{account_filter}}
+		`)
+		params := []bigquery.QueryParameter{}
+		if accountID != "" {
+			query = w.withAccountFilter(query)
+			params = append(params, bigquery.QueryParameter{Name: "account_id", Value: accountID})
+		}
+		value, err := w.runBigQueryFloat(ctx, query, params)
+		if err != nil {
+			return "0"
+		}
+		return strconv.FormatFloat(value, 'f', 2, 64)
+	}
+
 	query := "select coalesce(sum(mrr), 0) from fact_subscriptions where is_active = 1"
 	args := []interface{}{}
 	if accountID != "" {
@@ -260,6 +408,38 @@ func (w *WarehouseClient) GetMRR(ctx context.Context, accountID string) string {
 }
 
 func (w *WarehouseClient) GetNRR(ctx context.Context, startDate, endDate, accountID string) string {
+	if w.mode == "bigquery" {
+		startQuery := w.bqQuery(`
+			select mrr from {{dataset}}.fact_mrr_snapshots
+			where snapshot_date = @start_date
+			{{account_filter}}
+		`)
+		endQuery := w.bqQuery(`
+			select mrr from {{dataset}}.fact_mrr_snapshots
+			where snapshot_date = @end_date
+			{{account_filter}}
+		`)
+		params := []bigquery.QueryParameter{
+			{Name: "start_date", Value: startDate},
+			{Name: "end_date", Value: endDate},
+		}
+		if accountID != "" {
+			startQuery = w.withAccountFilter(startQuery)
+			endQuery = w.withAccountFilter(endQuery)
+			params = append(params, bigquery.QueryParameter{Name: "account_id", Value: accountID})
+		}
+		startMRR, err := w.runBigQueryFloat(ctx, startQuery, params)
+		if err != nil || startMRR == 0 {
+			return "0%"
+		}
+		endMRR, err := w.runBigQueryFloat(ctx, endQuery, params)
+		if err != nil {
+			return "0%"
+		}
+		nrr := (endMRR / startMRR) * 100
+		return fmt.Sprintf("%.2f%%", nrr)
+	}
+
 	query := "select mrr from fact_mrr_snapshots where snapshot_date = ?"
 	args := []interface{}{startDate}
 	if accountID != "" {
@@ -292,6 +472,42 @@ func (w *WarehouseClient) GetNRR(ctx context.Context, startDate, endDate, accoun
 }
 
 func (w *WarehouseClient) GetChurnRate(ctx context.Context, startDate, endDate, accountID string) string {
+	if w.mode == "bigquery" {
+		startQuery := w.bqQuery(`
+			select active_customers from {{dataset}}.fact_customer_snapshots
+			where snapshot_date = @start_date
+			{{account_filter}}
+		`)
+		endQuery := w.bqQuery(`
+			select active_customers from {{dataset}}.fact_customer_snapshots
+			where snapshot_date = @end_date
+			{{account_filter}}
+		`)
+		params := []bigquery.QueryParameter{
+			{Name: "start_date", Value: startDate},
+			{Name: "end_date", Value: endDate},
+		}
+		if accountID != "" {
+			startQuery = w.withAccountFilter(startQuery)
+			endQuery = w.withAccountFilter(endQuery)
+			params = append(params, bigquery.QueryParameter{Name: "account_id", Value: accountID})
+		}
+		startCustomers, err := w.runBigQueryInt(ctx, startQuery, params)
+		if err != nil || startCustomers == 0 {
+			return "0%"
+		}
+		endCustomers, err := w.runBigQueryInt(ctx, endQuery, params)
+		if err != nil {
+			return "0%"
+		}
+		lost := startCustomers - endCustomers
+		if lost < 0 {
+			lost = 0
+		}
+		churn := (float64(lost) / float64(startCustomers)) * 100
+		return fmt.Sprintf("%.2f%%", churn)
+	}
+
 	query := "select active_customers from fact_customer_snapshots where snapshot_date = ?"
 	args := []interface{}{startDate}
 	if accountID != "" {
@@ -328,6 +544,21 @@ func (w *WarehouseClient) GetChurnRate(ctx context.Context, startDate, endDate, 
 }
 
 func (w *WarehouseClient) GetLTV(ctx context.Context, startDate, endDate, accountID string) string {
+	if w.mode == "bigquery" {
+		arpuValue := w.GetARPU(ctx, startDate, endDate, accountID)
+		arpu, err := strconv.ParseFloat(arpuValue, 64)
+		if err != nil {
+			return "0"
+		}
+		churnValue := w.GetChurnRate(ctx, startDate, endDate, accountID)
+		churn, err := strconv.ParseFloat(strings.TrimSuffix(churnValue, "%"), 64)
+		if err != nil || churn <= 0 {
+			return "0"
+		}
+		ltv := arpu / (churn / 100)
+		return strconv.FormatFloat(ltv, 'f', 2, 64)
+	}
+
 	arpuValue := w.GetARPU(ctx, startDate, endDate, accountID)
 	arpu, err := strconv.ParseFloat(arpuValue, 64)
 	if err != nil {
@@ -375,6 +606,40 @@ func (w *WarehouseClient) GetLTV(ctx context.Context, startDate, endDate, accoun
 }
 
 func (w *WarehouseClient) GetCAC(ctx context.Context, startDate, endDate, accountID string) string {
+	if w.mode == "bigquery" {
+		spendQuery := w.bqQuery(`
+			select coalesce(sum(amount), 0) as spend
+			from {{dataset}}.fact_marketing_spend
+			where spend_date between @start_date and @end_date
+			{{account_filter}}
+		`)
+		newCustomersQuery := w.bqQuery(`
+			select count(distinct account_id) as customers
+			from {{dataset}}.fact_orders
+			where order_date between @start_date and @end_date
+			{{account_filter}}
+		`)
+		params := []bigquery.QueryParameter{
+			{Name: "start_date", Value: startDate},
+			{Name: "end_date", Value: endDate},
+		}
+		if accountID != "" {
+			spendQuery = w.withAccountFilter(spendQuery)
+			newCustomersQuery = w.withAccountFilter(newCustomersQuery)
+			params = append(params, bigquery.QueryParameter{Name: "account_id", Value: accountID})
+		}
+		spend, err := w.runBigQueryFloat(ctx, spendQuery, params)
+		if err != nil {
+			return "0"
+		}
+		newCustomers, err := w.runBigQueryInt(ctx, newCustomersQuery, params)
+		if err != nil || newCustomers == 0 {
+			return "0"
+		}
+		cac := spend / float64(newCustomers)
+		return strconv.FormatFloat(cac, 'f', 2, 64)
+	}
+
 	spendQuery := "select coalesce(sum(amount), 0) from fact_marketing_spend where spend_date between ? and ?"
 	args := []interface{}{startDate, endDate}
 	if accountID != "" {
@@ -404,4 +669,89 @@ func (w *WarehouseClient) GetCAC(ctx context.Context, startDate, endDate, accoun
 
 	cac := spend / float64(newCustomers)
 	return strconv.FormatFloat(cac, 'f', 2, 64)
+}
+
+func (w *WarehouseClient) bqQuery(sqlText string) string {
+	query := strings.ReplaceAll(sqlText, "{{dataset}}", fmt.Sprintf("`%s.%s`", w.project, w.dataset))
+	query = strings.ReplaceAll(query, "{{account_filter}}", "")
+	return query
+}
+
+func (w *WarehouseClient) withAccountFilter(sqlText string) string {
+	return strings.ReplaceAll(sqlText, "{{account_filter}}", "and account_id = @account_id")
+}
+
+func (w *WarehouseClient) runBigQueryFloat(ctx context.Context, sqlText string, params []bigquery.QueryParameter) (float64, error) {
+	query := w.bq.Query(sqlText)
+	query.Parameters = params
+	iter, err := query.Read(ctx)
+	if err != nil {
+		return 0, err
+	}
+	var row struct {
+		Value float64 `bigquery:"value"`
+		Spend float64 `bigquery:"spend"`
+		Revenue float64 `bigquery:"revenue"`
+		MRR float64 `bigquery:"mrr"`
+	}
+	if err := iter.Next(&row); err != nil {
+		return 0, err
+	}
+	if row.Value != 0 {
+		return row.Value, nil
+	}
+	if row.Spend != 0 {
+		return row.Spend, nil
+	}
+	if row.Revenue != 0 {
+		return row.Revenue, nil
+	}
+	if row.MRR != 0 {
+		return row.MRR, nil
+	}
+	return 0, nil
+}
+
+func (w *WarehouseClient) runBigQueryInt(ctx context.Context, sqlText string, params []bigquery.QueryParameter) (int, error) {
+	query := w.bq.Query(sqlText)
+	query.Parameters = params
+	iter, err := query.Read(ctx)
+	if err != nil {
+		return 0, err
+	}
+	var row struct {
+		Users int64 `bigquery:"users"`
+		Customers int64 `bigquery:"customers"`
+		ActiveCustomers int64 `bigquery:"active_customers"`
+	}
+	if err := iter.Next(&row); err != nil {
+		return 0, err
+	}
+	if row.Users != 0 {
+		return int(row.Users), nil
+	}
+	if row.Customers != 0 {
+		return int(row.Customers), nil
+	}
+	if row.ActiveCustomers != 0 {
+		return int(row.ActiveCustomers), nil
+	}
+	return 0, nil
+}
+
+func (w *WarehouseClient) runBigQueryCounts(ctx context.Context, sqlText string, params []bigquery.QueryParameter) (int, int, error) {
+	query := w.bq.Query(sqlText)
+	query.Parameters = params
+	iter, err := query.Read(ctx)
+	if err != nil {
+		return 0, 0, err
+	}
+	var row struct {
+		Sessions int64 `bigquery:"sessions"`
+		Conversions int64 `bigquery:"conversions"`
+	}
+	if err := iter.Next(&row); err != nil {
+		return 0, 0, err
+	}
+	return int(row.Sessions), int(row.Conversions), nil
 }

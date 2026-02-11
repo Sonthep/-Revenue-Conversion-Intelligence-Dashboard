@@ -5,6 +5,8 @@ node_modules/
 .env.local
 .env.*
 !.env.example
+api/dev.db
+api/dev.db-*
 __pycache__/
 *.pyc
 .vscode/
