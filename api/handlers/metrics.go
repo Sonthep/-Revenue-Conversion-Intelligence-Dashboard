@@ -77,6 +77,63 @@ func GetConversionRate(cache *redis.Client, warehouse *db.WarehouseClient) fiber
 	}
 }
 
+func GetARPU(cache *redis.Client, warehouse *db.WarehouseClient) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		startDate, endDate := resolveDateRange(c.Query("start_date"), c.Query("end_date"))
+		accountID := c.Query("account_id")
+
+		cacheKey := "arpu:" + startDate + ":" + endDate + ":" + accountID
+		if cached, ok := getCache(c.Context(), cache, cacheKey); ok {
+			return c.Status(http.StatusOK).JSON(MetricResponse{
+				Metric:     "arpu",
+				Value:      cached,
+				UpdatedAt:  time.Now().UTC().Format(time.RFC3339),
+				Cached:     true,
+				TimeWindow: startDate + " to " + endDate,
+			})
+		}
+
+		value := warehouse.GetARPU(context.Background(), startDate, endDate, accountID)
+		setCache(c.Context(), cache, cacheKey, value, 10*time.Minute)
+
+		return c.Status(http.StatusOK).JSON(MetricResponse{
+			Metric:     "arpu",
+			Value:      value,
+			UpdatedAt:  time.Now().UTC().Format(time.RFC3339),
+			Cached:     false,
+			TimeWindow: startDate + " to " + endDate,
+		})
+	}
+}
+
+func GetMRR(cache *redis.Client, warehouse *db.WarehouseClient) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		accountID := c.Query("account_id")
+
+		cacheKey := "mrr:" + accountID
+		if cached, ok := getCache(c.Context(), cache, cacheKey); ok {
+			return c.Status(http.StatusOK).JSON(MetricResponse{
+				Metric:     "mrr",
+				Value:      cached,
+				UpdatedAt:  time.Now().UTC().Format(time.RFC3339),
+				Cached:     true,
+				TimeWindow: "current",
+			})
+		}
+
+		value := warehouse.GetMRR(context.Background(), accountID)
+		setCache(c.Context(), cache, cacheKey, value, 15*time.Minute)
+
+		return c.Status(http.StatusOK).JSON(MetricResponse{
+			Metric:     "mrr",
+			Value:      value,
+			UpdatedAt:  time.Now().UTC().Format(time.RFC3339),
+			Cached:     false,
+			TimeWindow: "current",
+		})
+	}
+}
+
 func Health() fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		return c.Status(http.StatusOK).JSON(fiber.Map{"status": "ok"})

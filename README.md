@@ -26,6 +26,12 @@ go run ./
 The API uses a local SQLite dev warehouse by default. You can override it with:
 - `WAREHOUSE_DSN` in [api/.env.example](api/.env.example)
 
+Sample metric endpoints:
+- `/api/metrics/revenue`
+- `/api/metrics/conversion-rate`
+- `/api/metrics/arpu`
+- `/api/metrics/mrr`
+
 ### 3) Frontend (Next.js)
 ```bash
 cd /home/sonthep/dev/frontend
