@@ -29,6 +29,7 @@ The API uses a local SQLite dev warehouse by default. You can override it with:
 Optional auth:
 - Set `API_KEY` in [api/.env.example](api/.env.example)
 - Send `X-API-Key: <key>` or `Authorization: Bearer <key>` to access `/api/*`
+- Or set `API_KEYS` to scope keys to accounts (e.g., `key_admin:*`, `key_acct1:acct_001`)
 
 Sample metric endpoints:
 - `/api/metrics/revenue`

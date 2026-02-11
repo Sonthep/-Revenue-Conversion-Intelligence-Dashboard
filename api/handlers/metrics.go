@@ -22,7 +22,7 @@ type MetricResponse struct {
 func GetRevenue(cache *redis.Client, warehouse *db.WarehouseClient) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		startDate, endDate := resolveDateRange(c.Query("start_date"), c.Query("end_date"))
-		accountID := c.Query("account_id")
+		accountID := resolveAccountID(c)
 
 		cacheKey := "revenue:" + startDate + ":" + endDate + ":" + accountID
 		if cached, ok := getCache(c.Context(), cache, cacheKey); ok {
@@ -51,7 +51,7 @@ func GetRevenue(cache *redis.Client, warehouse *db.WarehouseClient) fiber.Handle
 func GetConversionRate(cache *redis.Client, warehouse *db.WarehouseClient) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		startDate, endDate := resolveDateRange(c.Query("start_date"), c.Query("end_date"))
-		accountID := c.Query("account_id")
+		accountID := resolveAccountID(c)
 
 		cacheKey := "conversion_rate:" + startDate + ":" + endDate + ":" + accountID
 		if cached, ok := getCache(c.Context(), cache, cacheKey); ok {
@@ -80,7 +80,7 @@ func GetConversionRate(cache *redis.Client, warehouse *db.WarehouseClient) fiber
 func GetARPU(cache *redis.Client, warehouse *db.WarehouseClient) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		startDate, endDate := resolveDateRange(c.Query("start_date"), c.Query("end_date"))
-		accountID := c.Query("account_id")
+		accountID := resolveAccountID(c)
 
 		cacheKey := "arpu:" + startDate + ":" + endDate + ":" + accountID
 		if cached, ok := getCache(c.Context(), cache, cacheKey); ok {
@@ -108,7 +108,7 @@ func GetARPU(cache *redis.Client, warehouse *db.WarehouseClient) fiber.Handler {
 
 func GetMRR(cache *redis.Client, warehouse *db.WarehouseClient) fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		accountID := c.Query("account_id")
+		accountID := resolveAccountID(c)
 
 		cacheKey := "mrr:" + accountID
 		if cached, ok := getCache(c.Context(), cache, cacheKey); ok {
@@ -137,7 +137,7 @@ func GetMRR(cache *redis.Client, warehouse *db.WarehouseClient) fiber.Handler {
 func GetNRR(cache *redis.Client, warehouse *db.WarehouseClient) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		startDate, endDate := resolveDateRange(c.Query("start_date"), c.Query("end_date"))
-		accountID := c.Query("account_id")
+		accountID := resolveAccountID(c)
 
 		cacheKey := "nrr:" + startDate + ":" + endDate + ":" + accountID
 		if cached, ok := getCache(c.Context(), cache, cacheKey); ok {
@@ -166,7 +166,7 @@ func GetNRR(cache *redis.Client, warehouse *db.WarehouseClient) fiber.Handler {
 func GetChurnRate(cache *redis.Client, warehouse *db.WarehouseClient) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		startDate, endDate := resolveDateRange(c.Query("start_date"), c.Query("end_date"))
-		accountID := c.Query("account_id")
+		accountID := resolveAccountID(c)
 
 		cacheKey := "churn_rate:" + startDate + ":" + endDate + ":" + accountID
 		if cached, ok := getCache(c.Context(), cache, cacheKey); ok {
@@ -195,7 +195,7 @@ func GetChurnRate(cache *redis.Client, warehouse *db.WarehouseClient) fiber.Hand
 func GetLTV(cache *redis.Client, warehouse *db.WarehouseClient) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		startDate, endDate := resolveDateRange(c.Query("start_date"), c.Query("end_date"))
-		accountID := c.Query("account_id")
+		accountID := resolveAccountID(c)
 
 		cacheKey := "ltv:" + startDate + ":" + endDate + ":" + accountID
 		if cached, ok := getCache(c.Context(), cache, cacheKey); ok {
@@ -224,7 +224,7 @@ func GetLTV(cache *redis.Client, warehouse *db.WarehouseClient) fiber.Handler {
 func GetCAC(cache *redis.Client, warehouse *db.WarehouseClient) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		startDate, endDate := resolveDateRange(c.Query("start_date"), c.Query("end_date"))
-		accountID := c.Query("account_id")
+		accountID := resolveAccountID(c)
 
 		cacheKey := "cac:" + startDate + ":" + endDate + ":" + accountID
 		if cached, ok := getCache(c.Context(), cache, cacheKey); ok {
@@ -266,6 +266,15 @@ func getCache(ctx context.Context, client *redis.Client, key string) (string, bo
 
 func setCache(ctx context.Context, client *redis.Client, key string, value string, ttl time.Duration) {
 	_ = client.Set(ctx, key, value, ttl).Err()
+}
+
+func resolveAccountID(c *fiber.Ctx) string {
+	if value := c.Locals("account_id"); value != nil {
+		if accountID, ok := value.(string); ok && accountID != "" {
+			return accountID
+		}
+	}
+	return c.Query("account_id")
 }
 
 func resolveDateRange(startDate, endDate string) (string, string) {
