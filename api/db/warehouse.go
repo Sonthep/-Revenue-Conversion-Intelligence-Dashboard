@@ -70,6 +70,18 @@ func (w *WarehouseClient) Migrate(ctx context.Context) error {
 			mrr numeric not null,
 			is_active integer not null
 		);`,
+		`create table if not exists fact_mrr_snapshots (
+			snapshot_date date not null,
+			account_id text not null,
+			mrr numeric not null,
+			primary key (snapshot_date, account_id)
+		);`,
+		`create table if not exists fact_customer_snapshots (
+			snapshot_date date not null,
+			account_id text not null,
+			active_customers integer not null,
+			primary key (snapshot_date, account_id)
+		);`,
 	}
 
 	for _, q := range queries {
@@ -94,6 +106,8 @@ func (w *WarehouseClient) Seed(ctx context.Context) error {
 	insertSession := `insert into fact_sessions (session_id, session_date, account_id, had_conversion) values (?, ?, ?, ?);`
 	insertActiveUser := `insert into fact_active_users (user_id, activity_date, account_id) values (?, ?, ?);`
 	insertSubscription := `insert into fact_subscriptions (subscription_id, account_id, mrr, is_active) values (?, ?, ?, ?);`
+	insertMRRSnapshot := `insert into fact_mrr_snapshots (snapshot_date, account_id, mrr) values (?, ?, ?);`
+	insertCustomerSnapshot := `insert into fact_customer_snapshots (snapshot_date, account_id, active_customers) values (?, ?, ?);`
 
 	now := time.Now().UTC()
 	for i := 0; i < 30; i++ {
@@ -132,6 +146,21 @@ func (w *WarehouseClient) Seed(ctx context.Context) error {
 		if _, err := w.db.ExecContext(ctx, insertSubscription, subscriptionID, accountID, mrr, 1); err != nil {
 			return err
 		}
+	}
+
+	startDate := now.AddDate(0, 0, -30).Format("2006-01-02")
+	endDate := now.Format("2006-01-02")
+	if _, err := w.db.ExecContext(ctx, insertMRRSnapshot, startDate, "acct_001", 2500); err != nil {
+		return err
+	}
+	if _, err := w.db.ExecContext(ctx, insertMRRSnapshot, endDate, "acct_001", 2800); err != nil {
+		return err
+	}
+	if _, err := w.db.ExecContext(ctx, insertCustomerSnapshot, startDate, "acct_001", 120); err != nil {
+		return err
+	}
+	if _, err := w.db.ExecContext(ctx, insertCustomerSnapshot, endDate, "acct_001", 110); err != nil {
+		return err
 	}
 
 	return nil
@@ -216,4 +245,72 @@ func (w *WarehouseClient) GetMRR(ctx context.Context, accountID string) string {
 	}
 
 	return strconv.FormatFloat(value, 'f', 2, 64)
+}
+
+func (w *WarehouseClient) GetNRR(ctx context.Context, startDate, endDate, accountID string) string {
+	query := "select mrr from fact_mrr_snapshots where snapshot_date = ?"
+	args := []interface{}{startDate}
+	if accountID != "" {
+		query += " and account_id = ?"
+		args = append(args, accountID)
+	}
+
+	var startMRR float64
+	if err := w.db.QueryRowContext(ctx, query, args...).Scan(&startMRR); err != nil {
+		return "0%"
+	}
+
+	endQuery := "select mrr from fact_mrr_snapshots where snapshot_date = ?"
+	endArgs := []interface{}{endDate}
+	if accountID != "" {
+		endQuery += " and account_id = ?"
+		endArgs = append(endArgs, accountID)
+	}
+
+	var endMRR float64
+	if err := w.db.QueryRowContext(ctx, endQuery, endArgs...).Scan(&endMRR); err != nil {
+		return "0%"
+	}
+	if startMRR == 0 {
+		return "0%"
+	}
+
+	nrr := (endMRR / startMRR) * 100
+	return fmt.Sprintf("%.2f%%", nrr)
+}
+
+func (w *WarehouseClient) GetChurnRate(ctx context.Context, startDate, endDate, accountID string) string {
+	query := "select active_customers from fact_customer_snapshots where snapshot_date = ?"
+	args := []interface{}{startDate}
+	if accountID != "" {
+		query += " and account_id = ?"
+		args = append(args, accountID)
+	}
+
+	var startCustomers int
+	if err := w.db.QueryRowContext(ctx, query, args...).Scan(&startCustomers); err != nil {
+		return "0%"
+	}
+
+	endQuery := "select active_customers from fact_customer_snapshots where snapshot_date = ?"
+	endArgs := []interface{}{endDate}
+	if accountID != "" {
+		endQuery += " and account_id = ?"
+		endArgs = append(endArgs, accountID)
+	}
+
+	var endCustomers int
+	if err := w.db.QueryRowContext(ctx, endQuery, endArgs...).Scan(&endCustomers); err != nil {
+		return "0%"
+	}
+	if startCustomers == 0 {
+		return "0%"
+	}
+
+	lost := startCustomers - endCustomers
+	if lost < 0 {
+		lost = 0
+	}
+	churn := (float64(lost) / float64(startCustomers)) * 100
+	return fmt.Sprintf("%.2f%%", churn)
 }

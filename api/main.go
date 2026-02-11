@@ -35,6 +35,8 @@ func main() {
 	api.Get("/metrics/conversion-rate", handlers.GetConversionRate(redisClient, warehouse))
 	api.Get("/metrics/arpu", handlers.GetARPU(redisClient, warehouse))
 	api.Get("/metrics/mrr", handlers.GetMRR(redisClient, warehouse))
+	api.Get("/metrics/nrr", handlers.GetNRR(redisClient, warehouse))
+	api.Get("/metrics/churn-rate", handlers.GetChurnRate(redisClient, warehouse))
 	api.Get("/health", handlers.Health())
 
 	log.Fatal(app.Listen(":8080"))
