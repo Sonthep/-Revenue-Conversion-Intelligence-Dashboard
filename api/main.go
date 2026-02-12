@@ -39,6 +39,8 @@ func main() {
 	api.Get("/metrics/churn-rate", handlers.GetChurnRate(redisClient, warehouse))
 	api.Get("/metrics/ltv", handlers.GetLTV(redisClient, warehouse))
 	api.Get("/metrics/cac", handlers.GetCAC(redisClient, warehouse))
+	api.Get("/metrics/revenue-trend", handlers.GetRevenueTrend(warehouse))
+	api.Get("/metrics/conversion-trend", handlers.GetConversionTrend(warehouse))
 	api.Get("/health", handlers.Health())
 
 	log.Fatal(app.Listen(":8080"))

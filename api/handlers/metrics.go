@@ -250,6 +250,38 @@ func GetCAC(cache *redis.Client, warehouse *db.WarehouseClient) fiber.Handler {
 	}
 }
 
+func GetRevenueTrend(warehouse *db.WarehouseClient) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		startDate, endDate := resolveDateRange(c.Query("start_date"), c.Query("end_date"))
+		accountID := resolveAccountID(c)
+
+		points := warehouse.GetRevenueTrend(context.Background(), startDate, endDate, accountID)
+		return c.Status(http.StatusOK).JSON(MetricResponse{
+			Metric:     "revenue_trend",
+			Value:      points,
+			UpdatedAt:  time.Now().UTC().Format(time.RFC3339),
+			Cached:     false,
+			TimeWindow: startDate + " to " + endDate,
+		})
+	}
+}
+
+func GetConversionTrend(warehouse *db.WarehouseClient) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		startDate, endDate := resolveDateRange(c.Query("start_date"), c.Query("end_date"))
+		accountID := resolveAccountID(c)
+
+		points := warehouse.GetConversionTrend(context.Background(), startDate, endDate, accountID)
+		return c.Status(http.StatusOK).JSON(MetricResponse{
+			Metric:     "conversion_trend",
+			Value:      points,
+			UpdatedAt:  time.Now().UTC().Format(time.RFC3339),
+			Cached:     false,
+			TimeWindow: startDate + " to " + endDate,
+		})
+	}
+}
+
 func Health() fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		return c.Status(http.StatusOK).JSON(fiber.Map{"status": "ok"})

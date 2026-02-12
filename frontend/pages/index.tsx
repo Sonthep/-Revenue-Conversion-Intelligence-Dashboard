@@ -3,6 +3,8 @@ import { DashboardLayout } from '../components/DashboardLayout';
 import { KPICard } from '../components/KPICard';
 import { fetchMetric } from '../lib/api';
 
+type TrendPoint = { date: string; value: number };
+
 export default function Home() {
   const [revenue, setRevenue] = useState<string>('0');
   const [conversion, setConversion] = useState<string>('0%');
@@ -12,6 +14,8 @@ export default function Home() {
   const [churn, setChurn] = useState<string>('0%');
   const [ltv, setLtv] = useState<string>('0');
   const [cac, setCac] = useState<string>('0');
+  const [revenueTrend, setRevenueTrend] = useState<TrendPoint[]>([]);
+  const [conversionTrend, setConversionTrend] = useState<TrendPoint[]>([]);
 
   useEffect(() => {
     const load = async () => {
@@ -23,6 +27,8 @@ export default function Home() {
       const churnMetric = await fetchMetric('churn-rate');
       const ltvMetric = await fetchMetric('ltv');
       const cacMetric = await fetchMetric('cac');
+      const revenueTrendMetric = await fetchMetric('revenue-trend');
+      const conversionTrendMetric = await fetchMetric('conversion-trend');
 
       setRevenue(revenueMetric.value ?? '0');
       setConversion(conversionMetric.value ?? '0%');
@@ -32,6 +38,8 @@ export default function Home() {
       setChurn(churnMetric.value ?? '0%');
       setLtv(ltvMetric.value ?? '0');
       setCac(cacMetric.value ?? '0');
+      setRevenueTrend(Array.isArray(revenueTrendMetric.value) ? revenueTrendMetric.value : []);
+      setConversionTrend(Array.isArray(conversionTrendMetric.value) ? conversionTrendMetric.value : []);
     };
 
     load().catch(() => {
@@ -43,8 +51,13 @@ export default function Home() {
       setChurn('0%');
       setLtv('0');
       setCac('0');
+      setRevenueTrend([]);
+      setConversionTrend([]);
     });
   }, []);
+
+  const revenueRows = revenueTrend.slice(-7).reverse();
+  const conversionRows = conversionTrend.slice(-7).reverse();
 
   return (
     <DashboardLayout>
@@ -57,6 +70,48 @@ export default function Home() {
         <KPICard title="Churn Rate" value={churn} subtitle="Last 30 days" />
         <KPICard title="LTV" value={ltv} subtitle="Derived" />
         <KPICard title="CAC" value={cac} subtitle="Last 30 days" />
+      </div>
+
+      <div className="trend-section">
+        <div className="trend-card">
+          <div className="trend-title">Revenue Trend (Last 7 days)</div>
+          <table className="trend-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Revenue</th>
+              </tr>
+            </thead>
+            <tbody>
+              {revenueRows.map((row) => (
+                <tr key={row.date}>
+                  <td>{row.date}</td>
+                  <td>{row.value.toFixed(2)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="trend-card">
+          <div className="trend-title">Conversion Trend (Last 7 days)</div>
+          <table className="trend-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Conversion %</th>
+              </tr>
+            </thead>
+            <tbody>
+              {conversionRows.map((row) => (
+                <tr key={row.date}>
+                  <td>{row.date}</td>
+                  <td>{row.value.toFixed(2)}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </DashboardLayout>
   );
