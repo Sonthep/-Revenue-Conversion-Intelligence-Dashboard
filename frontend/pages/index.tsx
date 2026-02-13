@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { DashboardLayout } from '../components/DashboardLayout';
 import { KPICard } from '../components/KPICard';
+import { LineChart } from '../components/LineChart';
 import { fetchMetric } from '../lib/api';
 
 type TrendPoint = { date: string; value: number };
@@ -56,8 +57,8 @@ export default function Home() {
     });
   }, []);
 
-  const revenueRows = revenueTrend.slice(-7).reverse();
-  const conversionRows = conversionTrend.slice(-7).reverse();
+  const revenueRows = revenueTrend.slice(-14);
+  const conversionRows = conversionTrend.slice(-14);
 
   return (
     <DashboardLayout>
@@ -73,45 +74,17 @@ export default function Home() {
       </div>
 
       <div className="trend-section">
-        <div className="trend-card">
-          <div className="trend-title">Revenue Trend (Last 7 days)</div>
-          <table className="trend-table">
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Revenue</th>
-              </tr>
-            </thead>
-            <tbody>
-              {revenueRows.map((row) => (
-                <tr key={row.date}>
-                  <td>{row.date}</td>
-                  <td>{row.value.toFixed(2)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="trend-card">
-          <div className="trend-title">Conversion Trend (Last 7 days)</div>
-          <table className="trend-table">
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Conversion %</th>
-              </tr>
-            </thead>
-            <tbody>
-              {conversionRows.map((row) => (
-                <tr key={row.date}>
-                  <td>{row.date}</td>
-                  <td>{row.value.toFixed(2)}%</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <LineChart
+          title="Revenue Trend"
+          subtitle="Last 14 days"
+          data={revenueRows}
+        />
+        <LineChart
+          title="Conversion Trend"
+          subtitle="Last 14 days"
+          data={conversionRows}
+          valueSuffix="%"
+        />
       </div>
     </DashboardLayout>
   );
