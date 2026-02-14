@@ -27,6 +27,13 @@ function toPoints(data: TrendPoint[], width: number, height: number) {
     .join(" ");
 }
 
+function toArea(points: string, width: number, height: number) {
+  if (!points) {
+    return "";
+  }
+  return `${points} ${width},${height} 0,${height}`;
+}
+
 function latestValue(data: TrendPoint[]) {
   if (data.length === 0) {
     return "0";
@@ -39,6 +46,8 @@ export function LineChart({ title, subtitle, data, valueSuffix }: LineChartProps
   const width = 520;
   const height = 160;
   const points = toPoints(data, width, height);
+  const areaPoints = toArea(points, width, height);
+  const gradientId = `chart-gradient-${title.replace(/\s+/g, '-').toLowerCase()}`;
 
   return (
     <div className="chart-card">
@@ -56,6 +65,13 @@ export function LineChart({ title, subtitle, data, valueSuffix }: LineChartProps
           <div className="chart-empty">No data</div>
         ) : (
           <svg className="chart-svg" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
+            <defs>
+              <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="rgba(14, 116, 144, 0.35)" />
+                <stop offset="100%" stopColor="rgba(14, 116, 144, 0)" />
+              </linearGradient>
+            </defs>
+            <polygon className="chart-area" points={areaPoints} fill={`url(#${gradientId})`} />
             <polyline className="chart-line" points={points} />
           </svg>
         )}

@@ -62,6 +62,10 @@ export default function Home() {
 
   return (
     <DashboardLayout>
+      <div className="section-header">
+        <div className="section-title">Executive Snapshot</div>
+        <div className="section-subtitle">Core KPIs for the last 30 days</div>
+      </div>
       <div className="grid">
         <KPICard title="Revenue" value={revenue} subtitle="Last 30 days" />
         <KPICard title="Conversion Rate" value={conversion} subtitle="Last 30 days" />
@@ -73,6 +77,10 @@ export default function Home() {
         <KPICard title="CAC" value={cac} subtitle="Last 30 days" />
       </div>
 
+      <div className="section-header">
+        <div className="section-title">Momentum</div>
+        <div className="section-subtitle">Short-term trend lines</div>
+      </div>
       <div className="trend-section">
         <LineChart
           title="Revenue Trend"
